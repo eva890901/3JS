@@ -1,0 +1,283 @@
+<!DOCTYPE html>
+<html>
+<head>
+<style>
+#info {
+  position: absolute;
+  top: 0px;
+  width: 100%;
+  padding: 10px;
+  text-align: center;
+  color: #ffff00
+}
+
+body {
+  overflow: hidden;
+}
+</style>
+</head>
+<body> 
+
+<div id="info">1214 shoot</div>
+<script src="https://code.jquery.com/jquery-2.1.4.min.js"></script>
+<script src="https://jyunming-chen.github.io/tutsplus/js/KeyboardState.js"></script>
+<script type='module'>
+javascript:(function(){var script=document.createElement('script');script.onload=function(){var stats=new Stats();document.body.appendChild(stats.dom);requestAnimationFrame(function loop(){stats.update();requestAnimationFrame(loop)});};script.src='https://mrdoob.github.io/stats.js/build/stats.min.js';document.head.appendChild(script);})()
+
+import * as THREE from "https://threejs.org/build/three.module.js";
+import { OrbitControls } from "https://threejs.org/examples/jsm/controls/OrbitControls.js";
+
+var camera, scene, renderer;
+var barrel, pointA, pointB;
+var yaw, pitch;
+var keyboard = new KeyboardState();
+var bullets = [],targets = [];
+var sprites = [],sprite;
+var uvOffsetArray = [];
+
+init();
+animate();
+
+function setUpOffsetArray() {
+  var rowCount = 4; 
+  var colCount = 8;
+  for (var i = 0; i < rowCount; i++) {
+    var row = [];
+    for (var j = 0; j < colCount; j++)
+      row.push(new THREE.Vector2(j * 0.125, - 0.25 * i));
+    uvOffsetArray.push(row);
+  }
+}
+function buildSprite(texMat) {
+
+	var geometry = new THREE.Geometry();
+	geometry.vertices.push(
+	new THREE.Vector3(-15, -15, 0),
+	new THREE.Vector3(15, -15, 0),
+	new THREE.Vector3(15, 15, 0),
+	new THREE.Vector3(-15, 15, 0)
+	);
+
+	var face;
+	face = new THREE.Face3(0, 1, 2);
+	geometry.faces.push(face);
+	face = new THREE.Face3(0, 2, 3);
+	geometry.faces.push(face);
+
+	var uv0 = new THREE.Vector2(0.0,0.75);
+	var uv1 = new THREE.Vector2(0.125,0.75);
+	var uv2 = new THREE.Vector2(0.125,1.0);
+	var uv3 = new THREE.Vector2(0.0,1.0);
+  
+	geometry.faceVertexUvs[0].push([uv0, uv1, uv2]);
+	geometry.faceVertexUvs[0].push([uv0, uv2, uv3]);
+
+	geometry.computeBoundingSphere();
+	geometry.computeFaceNormals();
+	geometry.computeVertexNormals();
+
+	sprite = new THREE.Mesh(geometry, texMat);
+}
+
+function makeBarrel(barrelLength) {
+	let barrel = new THREE.Group();
+	let _barrel = new THREE.Group();
+
+	let barrelBody = new THREE.Mesh (new THREE.CylinderGeometry (2,2,barrelLength,20,1), new THREE.MeshNormalMaterial());
+	_barrel.add (barrelBody);
+	barrelBody.position.set (0, barrelLength/2, 0);
+	barrel.add (_barrel);
+	_barrel.rotation.x = -Math.PI/2;
+	  
+	return barrel;
+}
+
+function init() {
+
+	keyboard = new KeyboardState();
+	scene = new THREE.Scene();
+
+    renderer = new THREE.WebGLRenderer()
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    document.body.appendChild(renderer.domElement);
+    renderer.setClearColor(0x888888);
+	
+	document.body.appendChild(renderer.domElement);
+
+	camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 1000);
+	camera.position.set (0, 100, 200);
+	let controls = new OrbitControls(camera, renderer.domElement);
+
+	////////////////////////////////////////////////////////////////
+	var gridXZ = new THREE.GridHelper(200, 20, 'red', 'white');
+	scene.add(gridXZ);
+
+    let light = new THREE.AmbientLight(0xffffff);
+    scene.add(light);
+
+	barrel = makeBarrel (30);
+	barrel.position.y = 20;
+	scene.add (barrel);
+
+	let stand = new THREE.Mesh (new THREE.CylinderGeometry(5,5,20,20), new THREE.MeshNormalMaterial());
+	scene.add (stand);
+	stand.position.y = 10;
+
+	// turning
+	yaw = 0;
+	pitch = 0;
+	barrel.rotation.y = yaw;
+	barrel.rotation.x = pitch;
+	barrel.rotation.order = 'ZYX';
+
+	pointA = new THREE.Mesh (new THREE.SphereGeometry(3,20,20), new THREE.MeshBasicMaterial({color:'yellow'}));
+	//pointA.position.copy (barrel.localToWorld (new THREE.Vector3(0,0,0)));
+	pointB = new THREE.Mesh (new THREE.SphereGeometry(3,20,20), new THREE.MeshBasicMaterial({color:'red'}));
+	//pointB.position.copy (barrel.localToWorld (new THREE.Vector3(0,0,-30)));
+
+	scene.add (pointA, pointB);
+
+    for(let i = 0; i < 5; i++){ //隨機產生目標
+        let target = new THREE.Mesh(new THREE.SphereGeometry(8,32,32), new THREE.MeshNormalMaterial({color: 0xff0000}));
+        let x = Math.random() * 80;
+        let y = Math.random() * 20;
+        let z = Math.random() * 50 + 30;
+
+        if(Math.random() > 0.5)
+            x *= -1;
+        
+        target.position.set(x,y,z);
+        targets.push(target);
+        scene.add(target);
+    }
+	setUpOffsetArray();
+
+    var loader = new THREE.TextureLoader();
+
+    loader.load(
+        'https://i.imgur.com/Gvg4H7p.png',
+        function(texture) {
+            var texMat = new THREE.MeshBasicMaterial({
+                map: texture,
+                transparent: true,
+                side: THREE.DoubleSide
+            });
+            texture.wrapS = THREE.RepeatWrapping;
+            texture.wrapT = THREE.RepeatWrapping;
+            buildSprite(texMat);
+        },
+        function(xhr) {
+            console.log((xhr.loaded / xhr.total * 100) + '% loaded');
+        },
+        function(xhr) {
+            console.log('An error happened');
+        }
+    );
+}
+
+function animate() {
+	keyboard.update();
+    Rotate();
+    shooting();
+	sprites.forEach(function(sprite){
+        spriteAnimate(sprite);
+        sprite.counter++;
+    });
+	
+	
+	barrel.rotation.y = yaw;
+	barrel.rotation.x = pitch;
+
+	pointA.position.copy (barrel.localToWorld (new THREE.Vector3(0,0,0)));
+	pointB.position.copy (barrel.localToWorld (new THREE.Vector3(0,0,-30)));
+	
+
+	bullets.forEach(function(data){
+        data.bullet.position.add(data.direction.clone().setLength(10));
+    });
+
+    let x = -1, y = -1;
+    for(let i = 0; i < bullets.length; i++){
+        for(let j = 0; j < targets.length; j++){
+            let dis = bullets[i].bullet.position.clone().sub(targets[j].position).length();
+
+            if(dis < 8.5){ //小於就會碰撞
+                x = i; //子彈
+                y = j; //目標
+            }
+        }
+    }
+
+
+    if(x !== -1 && y !== -1){
+	
+        let copySprite = sprite.clone();
+
+        sprites.push({
+            body: copySprite,
+            baseS: 0,
+            baseT: 0,
+            counter: 0
+        });
+
+        copySprite.position.copy(bullets[x].bullet.position);
+        scene.add(copySprite);
+
+        scene.remove(bullets[x].bullet, targets[y]);
+
+        bullets.splice(x,1);
+        targets.splice(y,1);
+    }
+	renderer.render (scene, camera); 
+	requestAnimationFrame( animate ); 
+
+}
+function spriteAnimate(sprite) {
+	sprite.body.material.map.offset.copy (uvOffsetArray[sprite.baseS][sprite.baseT]);  
+    sprite.baseT = (sprite.baseT + 1) % 8;
+    if (sprite.baseT === 0) {
+        if(sprite.baseS + 1 === 4)
+            scene.remove(sprite.body);
+
+        sprite.baseS = (sprite.baseS + 1) % 4;
+    }
+}
+function Rotate(){
+	if (keyboard.down('left')) {
+		yaw += 0.07;
+	} 
+	if (keyboard.down('right')) {
+		yaw -= 0.07;
+	} 
+	if (keyboard.down('up')) {
+		pitch += 0.07;
+	}
+	if (keyboard.down('down')) {
+		pitch -= 0.07;
+	}
+}
+function shooting(){
+
+	if(keyboard.down('space')){
+		const geometry = new THREE.SphereGeometry( 3, 32, 32 );
+		const material = new THREE.MeshBasicMaterial( {color: 0X000000} );
+		let bullet = new THREE.Mesh( geometry, material );
+		
+		bullet.position.copy(pointB.localToWorld(new THREE.Vector3()));
+		let point = pointA.localToWorld(new THREE.Vector3());
+
+		scene.add(bullet);
+
+		let direction = bullet.position.clone().sub(point).normalize();
+
+		bullets.push({
+			bullet: bullet,
+			direction: direction,
+		});
+	}
+}
+
+</script>
+</body>
+</html>
+
